@@ -1,0 +1,235 @@
+---
+title: Docker & AWS Integration
+date: '2025-05-28'
+tags: ['system-design', 'backend', 'devops']
+draft: false
+images: []
+coverImage: '/static/images/aws_docker.png'
+summary: Learn about feature flags, their benefits, and how to implement them for better feature control and deployment.
+viewOnPlatform: dev.to
+viewOnUrl: https://dev.to/shubham_singh_dc4c3162182/docker-aws-integration-14hh
+---
+
+
+## 🚀 Docker and AWS Integration: A Developer’s Complete Guide
+
+Docker has revolutionized the way we build, ship, and run applications. Combine that with AWS, and you get a powerful, scalable infrastructure for deploying modern applications.
+
+This guide explores how to integrate **Docker with AWS**, focusing on **ECR (Elastic Container Registry)**, **ECS (Elastic Container Service)**, and **EC2**—with real-world use cases and commands.
+
+---
+
+## 🧱 Why Docker + AWS?
+
+* **Docker** makes applications portable.
+* **AWS** gives scalable infrastructure.
+
+Together, they allow you to build microservices, deploy quickly, and manage infrastructure easily.
+
+---
+
+## ⚙️ Prerequisites
+
+* Docker installed locally
+* AWS CLI configured (`aws configure`)
+* Basic knowledge of EC2, ECS, IAM, and VPC
+
+---
+
+## 🐳 Step 1: Dockerize Your Application
+
+Let’s take a basic Python Flask app:
+
+**app.py**:
+
+```python
+from flask import Flask
+app = Flask(__name__)
+
+@app.route('/')
+def hello():
+    return "Hello from Docker on AWS!"
+```
+
+**Dockerfile**:
+
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+
+CMD ["python", "app.py"]
+```
+
+**requirements.txt**:
+
+```
+flask
+```
+
+**Build the Docker image**:
+
+```bash
+docker build -t flask-aws-app .
+```
+
+---
+
+## 📦 Step 2: Push Docker Image to AWS ECR
+
+### ✅ Create an ECR Repository
+
+```bash
+aws ecr create-repository --repository-name flask-aws-app
+```
+
+### ✅ Authenticate Docker with ECR
+
+```bash
+aws ecr get-login-password | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.<region>.amazonaws.com
+```
+
+### ✅ Tag & Push Image to ECR
+
+```bash
+docker tag flask-aws-app:latest <your-account-id>.dkr.ecr.<region>.amazonaws.com/flask-aws-app
+
+docker push <your-account-id>.dkr.ecr.<region>.amazonaws.com/flask-aws-app
+```
+
+Now your image is stored in AWS.
+
+---
+
+## 🚀 Step 3: Deploy Docker Image with ECS (Fargate)
+
+**Amazon ECS** is a container orchestration service. Use it to run your containerized app on AWS without managing servers.
+
+### 🧭 Setup ECS with Fargate (Simplified via Console or CLI)
+
+1. **Create a cluster** (Fargate type)
+2. **Create a Task Definition**
+
+   * Use ECR image URI
+   * Assign memory/CPU
+3. **Create Service**
+
+   * Attach to VPC and subnets
+   * Use a Load Balancer (optional)
+4. **Run the Service**
+
+✅ Now your container is running in ECS.
+
+---
+
+## 🖥️ Alternative: Run Docker on EC2
+
+You can manually deploy Docker containers on EC2 instances.
+
+### Step-by-step:
+
+```bash
+# SSH into EC2
+ssh ec2-user@<ec2-instance-ip>
+
+# Install Docker
+sudo yum update -y
+sudo yum install docker -y
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+
+# Pull and run image from ECR
+$(aws ecr get-login --no-include-email)
+docker pull <account-id>.dkr.ecr.<region>.amazonaws.com/flask-aws-app
+docker run -d -p 80:5000 flask-aws-app
+```
+
+You now have Docker running on an EC2 instance.
+
+---
+
+## 🔄 Bonus: Automate with CI/CD (GitHub Actions + ECR + ECS)
+
+**.github/workflows/deploy.yml**:
+
+```yaml
+name: Deploy to AWS ECS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v1
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to ECR
+        run: |
+          docker build -t flask-aws-app .
+          docker tag flask-aws-app:latest ${{ secrets.ECR_REPOSITORY }}
+          docker push ${{ secrets.ECR_REPOSITORY }}
+
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ecs-task.json
+          service: my-service
+          cluster: my-cluster
+          wait-for-service-stability: true
+```
+
+Use [GitHub Secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets) to store ECR and AWS credentials.
+
+---
+
+## 🧠 Real-World Use Cases
+
+* **Microservices**: Deploy isolated services on ECS or EC2
+* **Serverless Containers**: Use Fargate for true serverless infra
+* **CI/CD Pipelines**: Build images and push on every commit
+* **Scaling**: Use auto-scaling policies in ECS to grow traffic
+
+---
+
+## 🛡️ Tips and Best Practices
+
+* Use **ECR Lifecycle Policies** to clean up old images.
+* Define **resource limits** in ECS Task Definitions.
+* Enable **CloudWatch Logs** for your containers.
+* Use **IAM roles for tasks** to give least-privilege access.
+* Use **Load Balancer** for zero-downtime deployments.
+
+---
+
+## 📚 Summary
+
+| Feature       | ECR | ECS     | EC2 with Docker |
+| ------------- | --- | ------- | --------------- |
+| Stores Images | ✅   | ❌       | ❌               |
+| Orchestrates  | ❌   | ✅       | ❌               |
+| Full control  | ❌   | Partial | ✅               |
+| Managed Infra | ✅   | ✅       | ❌               |
+
+---
+
+## ✅ Conclusion
+
+Docker + AWS is the go-to combination for building and scaling modern applications. Whether you're deploying a microservice or a full stack system, you can containerize locally and deploy globally using AWS.
+
+Try both **ECS** and **EC2** methods and explore what works best for your architecture. Keep it containerized, scalable, and cloud-ready!
+
+---

@@ -1,0 +1,226 @@
+---
+title: API Rate Limiting
+date: '2025-05-28'
+tags: ['backend', 'system-design', 'api']
+draft: false
+images: []
+coverImage: '/static/images/rate_limit.png'
+summary: API rate limiting controls the number of requests a client can make to a server within a specified time period to prevent abuse and ensure service stability.
+viewOnPlatform: dev.to
+viewOnUrl: https://dev.to/shubham_singh_dc4c3162182/api-rate-limiting-379n
+---
+
+
+## Understanding API Rate Limiting and How to Implement It
+
+APIs are the backbone of modern web services. Whether it's weather data, payment processing, or social media interactions, APIs help us exchange data quickly and securely.
+
+But with great power comes great responsibility.
+
+To ensure fair use and prevent abuse, **API rate limiting** is crucial. In this blog, we'll break down what API rate limiting is, why it's important, and how to implement common strategies like **Token Bucket** and **Leaky Bucket** in Python.
+
+---
+
+## 🧠 What is API Rate Limiting?
+
+**Rate limiting** controls how many requests a client can make to an API in a given time frame.
+
+Example:
+
+* "You can make 60 requests per minute."
+* "No more than 1000 requests per day."
+
+Why use it?
+
+* Protects APIs from **abuse and DDoS attacks**
+* Helps maintain **performance and uptime**
+* Ensures **fair usage** among clients
+
+---
+
+## 🧩 Common Algorithms for Rate Limiting
+
+### 1. **Fixed Window Counter**
+
+In this approach, a counter tracks the number of requests during a fixed time window (e.g., 60 seconds).
+
+* ✅ Easy to implement
+* ❌ Can result in bursts at window edges
+
+```python
+from time import time
+
+class FixedWindowRateLimiter:
+    def __init__(self, max_requests, window_size):
+        self.max_requests = max_requests
+        self.window_size = window_size
+        self.window_start = int(time())
+        self.request_count = 0
+
+    def allow_request(self):
+        current_time = int(time())
+        if current_time - self.window_start >= self.window_size:
+            self.window_start = current_time
+            self.request_count = 0
+
+        if self.request_count < self.max_requests:
+            self.request_count += 1
+            return True
+        return False
+```
+
+---
+
+### 2. **Sliding Window Log**
+
+Instead of a fixed window, this keeps a **timestamp log** of requests and removes outdated ones.
+
+* ✅ More accurate than Fixed Window
+* ❌ Uses more memory (O(n) for n requests)
+
+```python
+from collections import deque
+from time import time
+
+class SlidingWindowRateLimiter:
+    def __init__(self, max_requests, window_size):
+        self.max_requests = max_requests
+        self.window_size = window_size
+        self.request_log = deque()
+
+    def allow_request(self):
+        current_time = time()
+        while self.request_log and self.request_log[0] <= current_time - self.window_size:
+            self.request_log.popleft()
+
+        if len(self.request_log) < self.max_requests:
+            self.request_log.append(current_time)
+            return True
+        return False
+```
+
+---
+
+### 3. **Token Bucket Algorithm**
+
+Imagine a bucket that fills up with tokens over time. Each request **consumes** one token. If no tokens are left, the request is denied.
+
+* ✅ Allows burst traffic
+* ✅ Easy to tune
+* ❌ Slightly more complex
+
+```python
+from time import time
+
+class TokenBucket:
+    def __init__(self, capacity, refill_rate):
+        self.capacity = capacity
+        self.tokens = capacity
+        self.refill_rate = refill_rate
+        self.last_refill = time()
+
+    def allow_request(self):
+        now = time()
+        elapsed = now - self.last_refill
+        refill = elapsed * self.refill_rate
+        self.tokens = min(self.capacity, self.tokens + refill)
+        self.last_refill = now
+
+        if self.tokens >= 1:
+            self.tokens -= 1
+            return True
+        return False
+```
+
+* `capacity`: maximum tokens
+* `refill_rate`: tokens added per second
+
+---
+
+### 4. **Leaky Bucket Algorithm**
+
+This approach is like a water bucket with a leak. Requests are queued, and only allowed out at a fixed rate.
+
+* ✅ Smooth traffic flow
+* ❌ Can delay burst traffic
+
+```python
+from collections import deque
+from time import time, sleep
+
+class LeakyBucket:
+    def __init__(self, leak_rate):
+        self.queue = deque()
+        self.last_checked = time()
+        self.leak_rate = leak_rate
+
+    def allow_request(self):
+        now = time()
+        elapsed = now - self.last_checked
+
+        leaks = int(elapsed * self.leak_rate)
+        for _ in range(leaks):
+            if self.queue:
+                self.queue.popleft()
+
+        self.last_checked = now
+        if len(self.queue) < self.leak_rate * 2:  # max burst size
+            self.queue.append(now)
+            return True
+        return False
+```
+
+---
+
+## 🛠️ Applying Rate Limiting to API Routes (Flask Example)
+
+```python
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+limiter = TokenBucket(capacity=10, refill_rate=1)  # 10 reqs, 1 per sec
+
+@app.route('/api/data')
+def get_data():
+    if limiter.allow_request():
+        return jsonify({"data": "Here is your API data"})
+    else:
+        return jsonify({"error": "Rate limit exceeded"}), 429
+```
+
+---
+
+## 💡 Best Practices
+
+* **Use Headers**: Send `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers for client transparency.
+* **Different Limits for Users**: Use API keys or IPs to set custom limits.
+* **Persistent Storage**: For distributed apps, store counters in Redis or a database.
+* **Fail-Safe Defaults**: Never fully block system-critical clients (use lower rate but allow some access).
+
+---
+
+## ✅ Summary
+
+| Algorithm      | Accuracy | Memory | Burst Support | Use When…                     |
+| -------------- | -------- | ------ | ------------- | ----------------------------- |
+| Fixed Window   | Low      | Low    | ❌             | Simple APIs, low traffic      |
+| Sliding Window | Medium   | Medium | ❌             | Need better accuracy          |
+| Token Bucket   | High     | Low    | ✅             | Need burst handling           |
+| Leaky Bucket   | High     | Medium | ❌             | Require smooth traffic output |
+
+---
+
+## 📦 Try It Yourself
+
+You can test these rate limiters in your own Flask or FastAPI projects. Want to scale up? Use **Redis**, **API Gateway**, or **Nginx with Lua** for advanced rate limiting in production environments.
+
+> “Build secure APIs, not open floodgates.”
+
+---
+
+### 🚀 Let Me Know
+
+Was this helpful? Let me know your thoughts or which algorithm you want implemented with Redis or FastAPI next!
+
+---
+

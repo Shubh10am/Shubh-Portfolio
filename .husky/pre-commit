@@ -1,0 +1,1 @@
+yarn run lint -- --no-stash && npm run format-check

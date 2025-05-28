@@ -1,0 +1,206 @@
+---
+title: Layering Approach (Lambda)
+date: '2025-05-28'
+tags: ['system-design', 'aws', 'devops']
+draft: false
+images: []
+coverImage: '/static/images/lambda.png'
+summary: Learn how to use the layering approach in AWS Lambda with YAML. Understand its purpose, structure, limits, and trade-offs.
+viewOnPlatform: dev.to
+viewOnUrl: https://dev.to/shubham_singh_dc4c3162182/layering-approach-lambda-19j0
+---
+
+
+## 🧬 Layering Approach in YAML for AWS Lambda: Why It Matters
+
+Serverless is awesome—until you hit the **50MB zipped size limit** of AWS Lambda or have to **reuse packages** across multiple functions. That’s where **Lambda Layers** and the **layering approach in YAML** come in.
+
+In this post, you’ll learn:
+
+* What Lambda Layers are
+* Why and when to use them
+* How to define them using **SAM YAML**
+* Pros, cons, and AWS Lambda limits
+
+---
+
+## 🧠 What Are Lambda Layers?
+
+A **Lambda Layer** is a **distribution mechanism for libraries, custom runtimes, and other dependencies**. Instead of packaging everything inside your function zip, you split shared logic into reusable layers.
+
+### Real-world Example:
+
+Say you have 5 Lambda functions using **Pandas** and **NumPy**. Rather than bundling them in each function (increasing size and build time), you create a shared **layer** containing those libraries.
+
+---
+
+## 📦 AWS Lambda Size Limits
+
+| Type                   | Max Size                 |
+| ---------------------- | ------------------------ |
+| Lambda code (zipped)   | **50MB** (direct upload) |
+| Lambda code (unzipped) | **250MB** (with layers)  |
+| Layer size (unzipped)  | **250MB** per layer      |
+| Max Layers per Lambda  | **5**                    |
+
+So if your function needs more than 50MB of libraries (like ML models or large packages), **layers are the solution**.
+
+---
+
+## 📄 YAML Layering with AWS SAM (Serverless Application Model)
+
+### 🧱 Step 1: Define a Lambda Layer in `template.yaml`
+
+```yaml
+Resources:
+  MySharedLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: shared-python-packages
+      Description: Shared Python libraries for all Lambdas
+      ContentUri: layers/shared/
+      CompatibleRuntimes:
+        - python3.9
+      RetentionPolicy: Retain
+```
+
+### 🧰 Folder Structure
+
+```
+project-root/
+├── template.yaml
+├── layers/
+│   └── shared/
+│       └── python/
+│           ├── pandas/
+│           ├── numpy/
+│           └── other_lib/
+├── functions/
+│   ├── functionA/
+│   │   └── app.py
+│   └── functionB/
+│       └── app.py
+```
+
+* AWS requires your dependencies inside `python/` (or `nodejs/`, `ruby/`, etc.)
+* Use a tool like `pip install -r requirements.txt -t layers/shared/python` to populate it.
+
+---
+
+### 🧾 Step 2: Reference the Layer in Your Lambda Function
+
+```yaml
+  MyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: app.lambda_handler
+      Runtime: python3.9
+      CodeUri: functions/functionA/
+      Layers:
+        - !Ref MySharedLayer
+      Events:
+        HelloAPI:
+          Type: Api
+          Properties:
+            Path: /hello
+            Method: get
+```
+
+Now the function will **inherit the layer** and can import libraries as if they were local.
+
+---
+
+## 🚀 Benefits of Layering
+
+| Advantage                 | Description                            |
+| ------------------------- | -------------------------------------- |
+| ✅ **Reusability**         | One layer, many functions              |
+| ✅ **Smaller Deployment**  | Function ZIPs stay under 50MB          |
+| ✅ **Faster CI/CD**        | No need to repackage large libraries   |
+| ✅ **Security & Patching** | Update the layer without touching code |
+
+---
+
+## ⚠️ Drawbacks & Caveats
+
+| Disadvantage           | Description                                           |
+| ---------------------- | ----------------------------------------------------- |
+| ❌ **Layer Limits**     | Max 250MB per layer; max 5 layers per function        |
+| ❌ **Versioning**       | Each update creates a new version (immutable)         |
+| ❌ **Cold Start Time**  | Larger layers can increase cold start latency         |
+| ❌ **Debugging Layers** | Can be tricky to troubleshoot if layer fails silently |
+
+---
+
+## 🧪 Testing Layers Locally
+
+You can test layers locally using the AWS SAM CLI:
+
+```bash
+sam local invoke MyFunction --event events/input.json
+```
+
+Or use Docker to simulate the AWS Lambda environment:
+
+```bash
+docker run -v "$PWD":/var/task lambci/lambda:python3.9 app.lambda_handler
+```
+
+Make sure your layer path is in the Python path:
+
+```python
+import sys
+sys.path.append('/opt')
+import pandas
+```
+
+`/opt` is the default mount path for Lambda layers.
+
+---
+
+## 🧱 Use Cases
+
+* **Shared SDKs** for internal services
+* **ML Models** and large Python dependencies
+* **Custom Runtimes** (e.g., Alpine builds)
+* **Monitoring Tools** (e.g., Datadog, New Relic)
+
+---
+
+## ⚙️ Pro Tip: Automate Layer Upload with Makefile
+
+```makefile
+LAYER_NAME=my-layer
+PYTHON_VERSION=python3.9
+
+build-layer:
+	pip install -r requirements.txt -t layers/shared/python
+
+deploy-layer:
+	aws lambda publish-layer-version \
+		--layer-name $(LAYER_NAME) \
+		--compatible-runtimes $(PYTHON_VERSION) \
+		--zip-file fileb://layer.zip
+```
+
+---
+
+## 📚 Summary
+
+| Feature             | With Layer         | Without Layer     |
+| ------------------- | ------------------ | ----------------- |
+| Package Size        | Smaller            | Grows quickly     |
+| CI/CD Time          | Faster             | Slower            |
+| Code Duplication    | Minimal            | High              |
+| Setup Complexity    | Slightly higher    | Simpler initially |
+| Max Runtime Support | Python, Node, etc. | Same              |
+
+---
+
+## ✅ Conclusion
+
+Layering your Lambda functions using YAML gives you clean separation of concerns, optimized performance, and scalable deployment pipelines. While layers come with a few trade-offs, their benefits in large-scale or complex serverless systems are hard to ignore.
+
+> “Don’t just write functions—architect them.”
+
+---
