@@ -1,11 +1,10 @@
 {
-    "name": "ram.barani.personal-blog",
+    "name": "shubham-singh-personal-blog",
     "version": "2.2.0",
     "private": true,
     "scripts": {
         "start": "next dev",
         "dev": "cross-env INIT_CWD=$PWD next dev",
-        // "build": "cross-env INIT_CWD=$PWD next build && cross-env NODE_OPTIONS='--experimental-json-modules' node ./scripts/postbuild.mjs",
         "build": "next build && node ./scripts/postbuild.mjs",
         "serve": "next start",
         "analyze": "cross-env ANALYZE=true next build",
